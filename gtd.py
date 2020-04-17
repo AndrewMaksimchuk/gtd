@@ -1,25 +1,43 @@
-import re
+import re, os, time, json
 from openpyxl import *
+
 wb = Workbook()
 ws = wb.create_sheet("Format_gtd", 0)
 Format_gtd = wb["Format_gtd"]
 
 Format_gtd.cell(row=1, column=1, value="Опис товара")
-Format_gtd.cell(row=1, column=2, value="Мито")
-Format_gtd.cell(row=1, column=4, value="Мито, %")
-Format_gtd.cell(row=1, column=5, value="Митна вартість, грн")
-Format_gtd.cell(row=1, column=6, value="Сума мита")
-Format_gtd.cell(row=1, column=7, value="Сума НДС")
+Format_gtd.cell(row=1, column=2, value="Кіл-ть, шт.")
+Format_gtd.cell(row=1, column=3, value="Мито")
+Format_gtd.cell(row=1, column=5, value="Мито, %")
+Format_gtd.cell(row=1, column=6, value="Митна вартість, грн")
+Format_gtd.cell(row=1, column=7, value="Сума мита")
+Format_gtd.cell(row=1, column=8, value="Сума НДС")
 Format_gtd.column_dimensions['A'].width = 30
 Format_gtd.column_dimensions['B'].width = 15
 Format_gtd.column_dimensions['D'].width = 15
 Format_gtd.column_dimensions['E'].width = 20
 Format_gtd.column_dimensions['F'].width = 15
 Format_gtd.column_dimensions['G'].width = 15
+Format_gtd.column_dimensions['H'].width = 15
+
+# Змінна в якій зберігається назва .xlsx файла який потрібно відкрити і прочитати
+newGtdFile = ""
+
+# Скануємо папку і шукаємо .xlsx файл для відкриття і зчитування
+directoryTree = os.listdir()
+for fileInDirectory in directoryTree:
+    filename, fileExtension = os.path.splitext(fileInDirectory)
+    if (filename != "gtd") and (fileExtension == ".xlsx"):
+        newGtdFile = fileInDirectory
+        break
+
+# Перевіряємо чи потрібно уточнити з якого файла брати всю необхідну інформацію
+if len(newGtdFile) < 1:
+    print("\nНе вдалося знайти файл!")
+    newGtdFile = input("Введіть назву ГТД файла в ручну: ")
+    newGtdFile = newGtdFile + ".xlsx"
 
 # Відкриваємо файл для зчитування інформації
-newGtdFile = input("Enter name of GTD file: ")
-newGtdFile = newGtdFile + ".xlsx"
 loadWorkbook = load_workbook(newGtdFile)
 sheet = loadWorkbook.active
 
@@ -37,24 +55,45 @@ for i in range(6, maxRowRange):
     # Отримуємо назви товарів
     nameProdact = sheet.cell(row=i, column=5).value
     # Список назв товарів з однаковою відсотковою ставкою
-    # listNameProdact = re.findall("[- [A-Z0-9-./]+ - [0-9]+ [шт;|м;]+]*", nameProdact) #Початковий варіант регулярного виразу, є недопрацювання, помилка
-    # listNameProdact = re.findall("[- [A-Z0-9-./]+ - [0-9]шт;", nameProdact)
-    listNameProdact = re.findall("- [A-Z0-9-./ ]+шт;", nameProdact)
+    listNameProdact = re.findall("[- [A-Z0-9-./]+ - [0-9]+ [шт;|м;]+]*", nameProdact)
     
     # Перебираємо список товарів і кожному вказуємо відповідний відсоток
     for x in listNameProdact:
-        Format_gtd.cell(row=startRow, column=1, value=x)
+        # Виділяємо(розділяємо) слова, назву товара і його кількість, окремо у масив
+        x = x.replace(".", "")
+        x = x.replace("- ", "")
+        # x = x.replace(" шт", "шт")
+        x = x.replace(" шт", "")
+        x = x.replace(" м", "")
+        x = x.strip()
+        arrayOfWords = x.split(" ")
 
-        # Отримуємо відсотки мита
-        muto = str(sheet.cell(row=i, column=16).value * 100) + "%"
+        # Записуємо назву товара у першу колонку
+        Format_gtd.cell(row=startRow, column=1, value=arrayOfWords[0])
+        # Записуємо кількість штук товара у другу колонку
+        numberOfGoods = arrayOfWords[-1].replace(";", "")
+        numberOfGoods = float(numberOfGoods)
+        Format_gtd.cell(row=startRow, column=2, value=numberOfGoods)
+
+        # Отримуємо відсотки мита та записуємо його у новий файл
+        muto = sheet.cell(row=i, column=16).value
+        if type(muto) == str:
+            muto = muto.replace(" ", "")
+            muto = muto.replace("%", "")
+            muto = muto.replace(",", ".")
+            muto = float(muto)
+            muto = muto / 100
+        muto = str(muto * 100) + " %"
+        
+        # Баг із отриманням відсотка
         if len(muto) > 10:
             pos = muto.find("%")
             finalString = muto[0:pos + 1]
             tollValue = finalString
-            Format_gtd.cell(row=startRow, column=2, value=finalString)
+            Format_gtd.cell(row=startRow, column=3, value=finalString)
         else:
             tollValue = muto
-            Format_gtd.cell(row=startRow, column=2, value=muto)
+            Format_gtd.cell(row=startRow, column=3, value=muto)
         startRow = startRow + 1
 
     # Отримуємо значення таможньої вартості, 0 - позиція у списку
@@ -75,12 +114,27 @@ for i in range(6, maxRowRange):
         toll[tollValue].append(amountOfDuty)
         toll[tollValue].append(amountOds)
 
-startRow2 = 2
+startRowInNewDocument = 2
 for b in toll:
-    Format_gtd.cell(row=startRow2, column=4, value=b)
-    Format_gtd.cell(row=startRow2, column=5, value=toll[b][0])
-    Format_gtd.cell(row=startRow2, column=6, value=toll[b][1])
-    Format_gtd.cell(row=startRow2, column=7, value=toll[b][2])
-    startRow2 = startRow2 + 1
+    Format_gtd.cell(row=startRowInNewDocument, column=5, value=b)
+    Format_gtd.cell(row=startRowInNewDocument, column=6, value=toll[b][0])
+    Format_gtd.cell(row=startRowInNewDocument, column=7, value=toll[b][1])
+    Format_gtd.cell(row=startRowInNewDocument, column=8, value=toll[b][2])
+    startRowInNewDocument = startRowInNewDocument + 1
 
+# Зберігаємо новий "gtd.xlsx" файл
 wb.save("gtd.xlsx")
+
+# Видаляємо старий не потрібний .xlsx файл
+f = open("setup.json", "r")
+setup = f.read()
+setup = json.loads(setup)
+f.close()
+
+# Перевіряємо чи потрібно видаляти файл
+if setup["deleteOldXlsxFile"]:
+    os.remove(newGtdFile)
+    print("\n" + newGtdFile + " - файл видалено!")
+
+print("\nГотово!")
+time.sleep(2)
